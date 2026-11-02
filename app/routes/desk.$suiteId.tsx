@@ -7,20 +7,25 @@ import {
 import {
   IconArrowBackUp,
   IconChevronLeft,
+  IconDatabase,
   IconDownload,
+  IconFileDiff,
+  IconKeyboard,
+  IconUsers,
   IconMessageCircle,
   IconRobot,
   IconUser,
   IconWand,
 } from "@tabler/icons-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { DEFAULT_GRADER_PROMPT, lineDiff } from "../../server/lib/grading";
 import { cn } from "@/lib/utils";
 
 type Verdict = "pass" | "fail" | null | undefined;
@@ -64,6 +69,142 @@ function Highlight({ text, quote }: { text: string; quote?: string | null }) {
   );
 }
 
+function kappa(value: number | null | undefined) {
+  return value === null || value === undefined ? "—" : value.toFixed(2);
+}
+
+function DataBadge({
+  kind,
+  name,
+  url,
+  license,
+}: {
+  kind?: string;
+  name?: string;
+  url?: string;
+  license?: string;
+}) {
+  if (kind === "public") {
+    return (
+      <a
+        href={url}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex items-center gap-1 rounded bg-sky-500/15 px-2 py-0.5 text-xs font-medium text-sky-700 dark:text-sky-300"
+        title={name}
+      >
+        <IconDatabase className="size-3.5" /> Real public data · {name?.split(":")[0]} · {license} License
+      </a>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 rounded bg-violet-500/15 px-2 py-0.5 text-xs font-medium text-violet-700 dark:text-violet-300">
+      <IconDatabase className="size-3.5" /> Synthetic data
+    </span>
+  );
+}
+
+type PromptVersion = { version: number; text: string; note: string; createdAt: string | null };
+
+function PromptPanel({ suiteId }: { suiteId: string }) {
+  const versions = useActionQuery("list-prompt-versions", { suiteId });
+  const list: PromptVersion[] = versions.data?.versions ?? [];
+  const latest = list[list.length - 1];
+  const [left, setLeft] = useState<number | null>(null);
+  const [right, setRight] = useState<number | null>(null);
+  const [draft, setDraft] = useState<string | null>(null);
+  const [note, setNote] = useState("");
+  const save = useActionMutation("save-prompt-version", {
+    onError: (err) => toast.error(actionErrorMessage(err) ?? "Could not save"),
+    onSuccess: (r) => {
+      toast.success(`Saved grader prompt v${r.version}`);
+      setDraft(null);
+      setNote("");
+      setLeft(null);
+      setRight(null);
+    },
+  });
+  const a = list.find((v) => v.version === (left ?? Math.max(1, (latest?.version ?? 1) - 1)));
+  const b = list.find((v) => v.version === (right ?? latest?.version ?? 1));
+  const diff = a && b ? lineDiff(a.text, b.text) : [];
+  const text = draft ?? latest?.text ?? DEFAULT_GRADER_PROMPT;
+  return (
+    <div className="mx-auto grid max-w-4xl gap-5 p-5">
+      <div className="grid gap-2">
+        <div className="flex items-center gap-2 text-sm font-medium">
+          <IconFileDiff className="size-4" /> Grader prompt diff
+          <select
+            aria-label="From version"
+            className="ml-auto rounded border bg-background px-1 py-0.5 text-xs"
+            value={a?.version ?? 1}
+            onChange={(e) => setLeft(Number(e.target.value))}
+          >
+            {list.map((v) => (
+              <option key={v.version} value={v.version}>v{v.version}</option>
+            ))}
+          </select>
+          <span className="text-xs text-muted-foreground">→</span>
+          <select
+            aria-label="To version"
+            className="rounded border bg-background px-1 py-0.5 text-xs"
+            value={b?.version ?? 1}
+            onChange={(e) => setRight(Number(e.target.value))}
+          >
+            {list.map((v) => (
+              <option key={v.version} value={v.version}>v{v.version}</option>
+            ))}
+          </select>
+        </div>
+        <pre aria-label="Prompt diff" className="whitespace-pre-wrap break-words rounded-lg border bg-card p-3 text-xs leading-relaxed">
+          {diff.map((d, i) => (
+            <div
+              key={i}
+              className={cn(
+                d.op === "add" && "bg-emerald-500/15 text-emerald-800 dark:text-emerald-200",
+                d.op === "del" && "bg-rose-500/15 text-rose-800 line-through dark:text-rose-200",
+              )}
+            >
+              {d.op === "add" ? "+ " : d.op === "del" ? "- " : "  "}
+              {d.text}
+            </div>
+          ))}
+        </pre>
+        <ul className="grid gap-0.5 text-xs text-muted-foreground">
+          {list.map((v) => (
+            <li key={v.version}>
+              v{v.version}: {v.note || "(no note)"}
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div className="grid gap-2">
+        <div className="text-sm font-medium">New version (based on v{latest?.version ?? 1})</div>
+        <Textarea aria-label="Grader prompt" rows={8} value={text} onChange={(e) => setDraft(e.target.value)} />
+        <input
+          aria-label="Version note"
+          className="rounded border bg-background px-2 py-1 text-sm"
+          placeholder="What changed and why"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+        />
+        <p className="text-xs text-muted-foreground">
+          Before shipping a new version, run the release gate: export the regressions, then{" "}
+          <code>node scripts/release-gate.mjs --tests file.jsonl --prompt new-prompt.txt</code>. Any failing test blocks
+          the release.
+        </p>
+        <Button
+          size="sm"
+          className="justify-self-start"
+          disabled={save.isPending || text === latest?.text}
+          onClick={() => save.mutate({ suiteId, text, note })}
+        >
+          Save as v{(latest?.version ?? 1) + 1}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function pct(value: number | null | undefined) {
   return value === null || value === undefined ? "—" : `${value}%`;
 }
@@ -78,7 +219,10 @@ export default function SuiteRoute() {
   const queryKey = ["action", "list-cases", params];
   const { data, isPending, error } = useActionQuery("list-cases", params);
   const audit = useActionQuery("list-audit", { suiteId, limit: 50 });
-  const regressions = useActionQuery("export-regressions", { suiteId });
+  const regressions = useActionQuery("export-regressions", { suiteId, scope: "regressions" });
+  const prompts = useActionQuery("list-prompt-versions", { suiteId });
+  const tab = searchParams.get("tab") === "prompt" ? "prompt" : "review";
+  const [secondName, setSecondName] = useState("");
 
   const cases = data?.cases ?? [];
   const visible = cases.filter((c) =>
@@ -133,9 +277,47 @@ export default function SuiteRoute() {
     onSuccess: () => toast.success("Verdict undone"),
   });
 
+  const simulate = useActionMutation("run-simulated-reviewer", {
+    onError: (err) => toast.error(actionErrorMessage(err) ?? "Could not run the simulated reviewer"),
+    onSuccess: (r) => toast.success(`Simulated reviewer: ${r.pass} PASS / ${r.fail} FAIL (rule-based, not a person)`),
+  });
+  const addReview = useActionMutation("add-review", {
+    onError: (err) => toast.error(actionErrorMessage(err) ?? "Could not save the review"),
+    onSuccess: (r) => toast.success(`Second review saved (${r.reviewer})`),
+  });
+
+  // Keyboard review: P = pass, F = fail, J/K = next/previous case, U = undo.
+  const keyState = useRef({ visible, selected, note, busy: false });
+  keyState.current = { visible, selected, note, busy: review.isPending || reopen.isPending };
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (tab !== "review" || e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+      const { visible: vis, selected: sel, note: n, busy } = keyState.current;
+      const key = e.key.toLowerCase();
+      if (key === "j" || key === "k") {
+        const i = vis.findIndex((c) => c.id === sel?.id);
+        const next = vis[Math.min(vis.length - 1, Math.max(0, i + (key === "j" ? 1 : -1)))];
+        if (next) setSearchParams({ case: next.id });
+        e.preventDefault();
+      } else if ((key === "p" || key === "f") && sel && !sel.humanVerdict && !busy) {
+        review.mutate({ caseId: sel.id, verdict: key === "p" ? "pass" : "fail", note: n });
+        e.preventDefault();
+      } else if (key === "u" && sel?.humanVerdict && !busy) {
+        reopen.mutate({ caseId: sel.id });
+        e.preventDefault();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
+
   function askAgentToGrade() {
+    const latest = prompts.data?.latest;
     sendToAgentChat({
-      message: `Grade every ungraded case in the EvalDesk suite "${data?.suite.name}" (suiteId ${suiteId}) against the suite policy. Call list-cases with status "ungraded", then call record-verdict once per case with an exact quote from the answer as evidence. Do not record human verdicts. Finish with a one-line summary of how many PASS and FAIL you proposed.`,
+      message: `Grade every ungraded case in the EvalDesk suite "${data?.suite.name}" (suiteId ${suiteId}) using grader prompt v${latest?.version ?? 1}:\n${latest?.text ?? DEFAULT_GRADER_PROMPT}\n\nCall list-cases with status "ungraded", then call record-verdict once per case with an exact quote from the answer as evidence. Do not record human verdicts. Finish with a one-line summary of how many PASS and FAIL you proposed.`,
       submit: true,
       openSidebar: true,
       newTab: true,
@@ -188,10 +370,41 @@ export default function SuiteRoute() {
         ) : (
           <h1 className="text-lg font-semibold">{data?.suite.name}</h1>
         )}
+        {data ? (
+          <DataBadge
+            kind={data.suite.dataKind}
+            name={data.suite.sourceName}
+            url={data.suite.sourceUrl}
+            license={data.suite.sourceLicense}
+          />
+        ) : null}
+        <nav className="flex gap-1 text-xs" aria-label="Suite tabs">
+          {(["review", "prompt"] as const).map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setSearchParams(t === "prompt" ? { tab: "prompt" } : {})}
+              className={cn("rounded px-2 py-1", tab === t ? "bg-accent font-medium" : "text-muted-foreground hover:bg-accent")}
+            >
+              {t === "review" ? "Review" : `Grader prompt v${prompts.data?.latest?.version ?? 1}`}
+            </button>
+          ))}
+        </nav>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <Button size="sm" onClick={askAgentToGrade}>
             <IconWand className="size-4" /> Ask agent to grade
           </Button>
+          {data?.suite.dataKind === "public" ? (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={simulate.isPending}
+              onClick={() => simulate.mutate({ suiteId })}
+              title="Deterministic checklist from the dataset guideline. Not a person."
+            >
+              <IconUsers className="size-4" /> Run simulated reviewer
+            </Button>
+          ) : null}
           <Button size="sm" variant="outline" onClick={downloadRegressions}>
             <IconDownload className="size-4" /> Export regressions ({regressions.data?.count ?? 0})
           </Button>
@@ -200,12 +413,20 @@ export default function SuiteRoute() {
 
       <section
         aria-label="Scoreboard"
-        className="grid grid-cols-2 gap-px border-b bg-border text-sm sm:grid-cols-5"
+        className="grid grid-cols-2 gap-px border-b bg-border text-sm sm:grid-cols-4 xl:grid-cols-7"
       >
         {[
+          ...(data?.interRater ?? []).map(
+            (r) =>
+              [
+                `${r.kind === "simulated" ? "Simulated reviewer" : r.reviewer} κ vs human`,
+                r.n ? `${kappa(r.kappa)} (${r.agree}/${r.n})` : "—",
+              ] as [string, string],
+          ),
           ["Agent graded", report ? `${report.agentGraded}/${report.total}` : "—"],
           ["Human reviewed", report ? `${report.humanReviewed}/${report.total}` : "—"],
           ["Agent vs human", pct(report?.agentAgreement)],
+          ["Agent κ vs human", kappa(report?.agentKappa)],
           ["Keyword baseline vs human", pct(report?.baselineAgreement)],
           ["Regressions", report ? String(report.regressions) : "—"],
         ].map(([label, value]) => (
@@ -216,6 +437,11 @@ export default function SuiteRoute() {
         ))}
       </section>
 
+      {tab === "prompt" ? (
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <PromptPanel suiteId={suiteId} />
+        </div>
+      ) : (
       <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[320px_1fr]">
         <aside className="min-h-0 overflow-y-auto border-r">
           <div className="flex gap-1 border-b p-2">
@@ -264,6 +490,13 @@ export default function SuiteRoute() {
                       <Chip verdict={c.agentVerdict as Verdict} label="Agent" />
                       <Chip verdict={c.humanVerdict as Verdict} label="Human" />
                       <Chip verdict={c.baselineVerdict} label="Keyword" />
+                      {c.reviews.map((r) => (
+                        <Chip
+                          key={r.reviewer}
+                          verdict={r.verdict as Verdict}
+                          label={r.reviewerKind === "simulated" ? "Sim" : "2nd"}
+                        />
+                      ))}
                     </span>
                   </button>
                 </li>
@@ -292,7 +525,7 @@ export default function SuiteRoute() {
                 <div className="text-xs uppercase tracking-wide text-muted-foreground">
                   Model answered {selected.agentEvidence ? "(agent's evidence highlighted)" : ""}
                 </div>
-                <p className="rounded-lg border bg-card p-3 text-sm leading-relaxed">
+                <p className="max-h-[420px] overflow-y-auto whitespace-pre-wrap rounded-lg border bg-card p-3 text-sm leading-relaxed">
                   <Highlight text={selected.answer} quote={selected.agentEvidence} />
                 </p>
               </div>
@@ -375,6 +608,53 @@ export default function SuiteRoute() {
                 )}
               </div>
 
+              <div className="grid gap-2 rounded-lg border p-3">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <IconUsers className="size-4" /> Second reviewers
+                </div>
+                {selected.reviews.length ? (
+                  <ul className="grid gap-1 text-sm">
+                    {selected.reviews.map((r) => (
+                      <li key={r.reviewer} className="flex flex-wrap items-center gap-2">
+                        <Chip verdict={r.verdict as Verdict} label="" />
+                        <span className="font-medium">{r.reviewer}</span>
+                        <span
+                          className={cn(
+                            "rounded px-1 text-[10px] font-semibold uppercase",
+                            r.reviewerKind === "simulated" ? "bg-muted text-muted-foreground" : "bg-sky-500/15 text-sky-700",
+                          )}
+                        >
+                          {r.reviewerKind === "simulated" ? "simulated reviewer · not a person" : "human"}
+                        </span>
+                        <span className="text-muted-foreground">{r.note}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-xs text-muted-foreground">No second review yet.</p>
+                )}
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    aria-label="Second reviewer name"
+                    className="rounded border bg-background px-2 py-1 text-xs"
+                    placeholder="Second reviewer name"
+                    value={secondName}
+                    onChange={(e) => setSecondName(e.target.value)}
+                  />
+                  {(["pass", "fail"] as const).map((v) => (
+                    <Button
+                      key={v}
+                      size="sm"
+                      variant="outline"
+                      disabled={!secondName.trim() || addReview.isPending}
+                      onClick={() => addReview.mutate({ caseId: selected.id, reviewer: secondName.trim(), verdict: v, note: "" })}
+                    >
+                      {v.toUpperCase()}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
               <details className="rounded-lg border p-3 text-sm">
                 <summary className="cursor-pointer font-medium">Suite policy</summary>
                 <pre className="mt-2 whitespace-pre-wrap font-sans text-muted-foreground">
@@ -405,6 +685,12 @@ export default function SuiteRoute() {
           )}
         </section>
       </div>
+      )}
+      <footer className="flex items-center gap-2 border-t px-5 py-1.5 text-[11px] text-muted-foreground">
+        <IconKeyboard className="size-3.5" /> Shortcuts: <kbd className="font-semibold">P</kbd> pass ·{" "}
+        <kbd className="font-semibold">F</kbd> fail · <kbd className="font-semibold">J</kbd>/<kbd className="font-semibold">K</kbd> next/previous ·{" "}
+        <kbd className="font-semibold">U</kbd> undo
+      </footer>
     </main>
   );
 }

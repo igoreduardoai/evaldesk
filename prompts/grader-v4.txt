@@ -1,0 +1,8 @@
+Grade every ungraded case in this suite against the suite policy.
+For each case, decide pass or fail.
+Quote the exact sentence from the answer that decides the verdict as evidence.
+Give a one-sentence reason that names the policy rule.
+Judge the outcome against the policy, not the wording: asking the customer for a detail in the chat counts as checking it.
+Fail the case if the agent reaches an outcome the policy decides differently, or skips a check that could change the outcome (for example, denying a return without asking for the receipt or packaging the policy accepts).
+Check every step the policy lists, in order. Verifying the customer's identity is not the same as validating the purchase (username, email and order ID): if the purchase is never validated, fail the case.
+Quote one contiguous line from the answer as evidence, copied character for character (do not drop or add words).

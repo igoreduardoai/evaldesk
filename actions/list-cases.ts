@@ -4,12 +4,12 @@ import { asc, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { getDb, schema } from "../server/db/index.js";
-import { baselineVerdict, computeReport } from "../server/lib/grading.js";
+import { baselineVerdict, cohenKappa, computeReport, type Verdict } from "../server/lib/grading.js";
 import { loadSuite } from "../server/lib/suites.js";
 
 export default defineAction({
   description:
-    "List a suite's cases with the agent verdict, the human verdict, the keyword-baseline verdict, and the suite report (agreement rates, overrules, regressions). Use status 'ungraded' to fetch only cases the agent has not graded yet.",
+    "List a suite's cases with the agent verdict, the human verdict, the keyword-baseline verdict, any second-reviewer verdicts (human or clearly labeled simulated), and the suite report (agreement rates, Cohen's kappa, overrules, regressions). Use status 'ungraded' to fetch only cases the agent has not graded yet.",
   schema: z.object({
     suiteId: z.string().describe("Suite id from list-suites"),
     status: z
@@ -50,9 +50,38 @@ export default defineAction({
       .orderBy(asc(c.position))
       .limit(500);
     const report = computeReport(rows);
+    const reviewRows = await getDb()
+      .select({
+        caseId: schema.reviews.caseId,
+        reviewer: schema.reviews.reviewer,
+        reviewerKind: schema.reviews.reviewerKind,
+        verdict: schema.reviews.verdict,
+        note: schema.reviews.note,
+      })
+      .from(schema.reviews)
+      .where(eq(schema.reviews.suiteId, suite.id))
+      .limit(5000);
+    const byCase = new Map<string, typeof reviewRows>();
+    for (const r of reviewRows) byCase.set(r.caseId, [...(byCase.get(r.caseId) ?? []), r]);
+    // Inter-rater agreement: primary human verdict vs each additional reviewer.
+    const reviewers = [...new Set(reviewRows.map((r) => r.reviewer))];
+    const interRater = reviewers.map((name) => {
+      const kind = reviewRows.find((r) => r.reviewer === name)?.reviewerKind ?? "human";
+      const pairs: Array<[Verdict, Verdict]> = [];
+      for (const row of rows) {
+        const other = byCase.get(row.id)?.find((r) => r.reviewer === name);
+        if (row.humanVerdict && other) pairs.push([row.humanVerdict as Verdict, other.verdict as Verdict]);
+      }
+      return { reviewer: name, kind, ...cohenKappa(pairs) };
+    });
+    const agentPairs: Array<[Verdict, Verdict]> = rows
+      .filter((r) => r.humanVerdict && r.agentVerdict)
+      .map((r) => [r.humanVerdict as Verdict, r.agentVerdict as Verdict]);
+    const agentKappa = cohenKappa(agentPairs);
     const withBaseline = rows.map((r) => ({
       ...r,
       baselineVerdict: baselineVerdict(r.answer, r.mustInclude),
+      reviews: byCase.get(r.id) ?? [],
     }));
     const filtered = withBaseline.filter((r) =>
       args.status === "ungraded"
@@ -63,6 +92,6 @@ export default defineAction({
             ? r.isRegression
             : true,
     );
-    return { suite, report, cases: filtered };
+    return { suite, report: { ...report, agentKappa: agentKappa.kappa }, interRater, cases: filtered };
   },
 });

@@ -1,0 +1,4 @@
+Grade every ungraded case in this suite against the suite policy.
+For each case, decide pass or fail.
+Quote the exact sentence from the answer that decides the verdict as evidence.
+Give a one-sentence reason that names the policy rule.

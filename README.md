@@ -1,77 +1,134 @@
 # EvalDesk
 
-**The agent grades your LLM's answers. You approve or overrule each verdict. Every overrule becomes a regression test.**
+**The agent grades your support bot against your written policy. A human approves or overrules each verdict. Every overrule becomes a regression test, and the release gate blocks a new grader prompt that fails one.**
 
-EvalDesk is an [Agent-Native](https://www.agent-native.com) app (Builder.io's open-source framework) for the boring, important part of shipping an LLM feature: checking whether its answers actually follow your written policy. An agent does the first pass and has to show its work. A person makes the final call in a review desk built for speed. The disagreements, the cases where the person had to correct the agent, are exported as JSONL regression tests, so the next version of your grader prompt has to get them right.
+EvalDesk is an [Agent-Native](https://www.agent-native.com) app, built on Builder.io's open-source framework. It handles a dull but important part of shipping a policy-bound LLM feature: checking whether the bot actually follows the policy.
+
+- An agent does the first pass and has to show its work.
+- A person makes the final call in a review desk built for the keyboard.
+- The cases where the person corrected the agent are exported as JSONL tests.
+- `scripts/release-gate.mjs` re-runs those tests against the next grader prompt and exits non-zero (BLOCKED) when any of them fails.
 
 ## At a glance
 
-- **What:** an Agent-Native review desk where the agent grades LLM answers against your written policy with an exact quote as evidence, you approve or overrule, and overrules are exported as JSONL regression tests.
-- **Video (2:17):** public Clips link in the submission · download: [release v0.1.0](https://github.com/igoreduardoai/evaldesk/releases/tag/v0.1.0)
-- **Code:** this repo (MIT). Run locally with `pnpm install && pnpm dev`, then **Load synthetic demo suite**.
-- **Proof:** agent 11/12 agreement with the human vs 7/12 for a keyword baseline (synthetic suite, one run) · 8/8 unit tests · Agent-Native doctor clean · 3 server-side guardrails.
+- **What:** a review desk plus a release gate.
+  - The agent grades with an exact quote as evidence.
+  - A human overrules it with **P** or **F**.
+  - A clearly labeled simulated second reviewer adds Cohen's kappa.
+  - Grader prompts are versioned with a line diff.
+  - Overrules become regression tests that block a bad prompt.
+- **Data:** two suites, each labeled in the app.
+  - **Real public data:** 12 human-written support chats from **ABCD** (ASAPP Research, **MIT License**), graded against the dataset's own return guideline.
+  - **Synthetic:** a fictional refund bot.
+  - Details: [docs/DATA.md](docs/DATA.md).
+- **Video:** the public Clips link is in the submission. The MP4 is in [releases](https://github.com/igoreduardoai/evaldesk/releases).
+- **Code:** this repo (MIT). To run it: `pnpm install && pnpm dev`, then **Load real public-data suite (ABCD, MIT)**.
+- **Proof (real runs, Nov 2, 2026):**
+  - The release gate blocked grader prompts v1, v2 and v3, and allowed v4 (3/3 regression tests).
+  - 13/13 unit tests pass, `typecheck` and Agent-Native `doctor` are clean, and 3 guardrails are enforced on the server.
 
-Built for the [Agent-Native Hackathon](https://www.builder.io/hackathon) (Oct 27 – Nov 9, 2026). All demo data is **synthetic**: a fictional store, a fictional refund policy, twelve invented support-bot answers.
+Built for the [Agent-Native Hackathon](https://www.builder.io/hackathon) (Oct 27 – Nov 9, 2026).
 
-![Review desk after the agent graded all 12 cases](docs/img/03-agent-graded.png)
+![ABCD suite after the agent graded all 12 real chats](docs/img/11-abcd-agent-graded.png)
 
-![Suites list](docs/img/01-desk.png)
+## Who needs this, and why they pay
+
+The buyer is a team that runs a customer-facing bot bound by a written policy: refunds, returns, fares, account rules. The people who feel it are support operations, QA, and whoever answers for compliance. Two public cases show what a wrong policy answer costs:
+
+- **Moffatt v. Air Canada, 2024 BCCRT 149.** Air Canada's website chatbot told a customer they could apply for a bereavement fare after travel. The airline's own policy page said otherwise.
+  - The B.C. Civil Resolution Tribunal rejected the argument that the chatbot was responsible for itself. It held Air Canada liable for negligent misrepresentation and ordered it to pay C$812.02 in damages, interest and fees.
+  - Sources: [decision (CanLII)](https://www.canlii.org/en/bc/bccrt/doc/2024/2024bccrt149/2024bccrt149.pdf), [CBC News](https://www.cbc.ca/news/canada/british-columbia/air-canada-chatbot-lawsuit-1.7116416).
+- **Cursor support bot, April 2025.** An AI support agent signing as "Sam" told a user that one-device-per-subscription was a policy. No such policy existed.
+  - Users posted cancellations. The company apologized, refunded the user, and began labeling AI-written support replies.
+  - Source: [Ars Technica](https://arstechnica.com/ai/2025/04/cursor-ai-support-bot-invents-fake-policy-and-triggers-user-uproar/).
+
+In both cases the bot stated a policy the company did not have. EvalDesk targets that failure. It tests the bot's answers against the written policy, it keeps a human verdict on record for each case, and it turns every correction into a test that the next release has to pass. No market-size figures are claimed here.
 
 ## The problem
 
-Teams that ship a support bot, a claims assistant, or any policy-bound LLM feature usually check quality in one of two ways:
+Policy checks for LLM answers usually come in two forms:
 
-1. **Keyword or regex checks.** Cheap and deterministic, but blind. An answer that says "store credit" passes the "mentions store credit" check even when it also hands out a cash refund the policy forbids.
-2. **A spreadsheet and a human.** Accurate, slow, and the corrections disappear into a cell comment. Nobody turns them into tests.
-
-LLM-as-judge tools speed up step 2, but a judge that is never corrected, never has to cite evidence, and can quietly overwrite a human decision is not something you can put in front of an auditor or a release gate.
+1. **Keyword or regex checks.** They are cheap but blind. On the ABCD suite the keyword check agreed with the human on 9 of 12 chats, the same as the LLM agent. Each one missed different cases, which is why the human step matters.
+2. **A spreadsheet and a human.** It is accurate but slow, and the corrections end up as cell comments that nobody turns into tests.
 
 ## What EvalDesk does
 
-- **One policy, many answers.** A *suite* is a written policy (for example, five refund rules) plus the model answers to grade. Add answers one by one or in batches of up to 100.
-- **The agent grades with evidence.** Click **Ask agent to grade**. The agent reads the policy and calls `record-verdict` once per case with PASS or FAIL, a reason that cites the rule, and an **exact quote from the answer**. The server checks that the quote really appears in the answer. If it doesn't, the call fails with `evidence_not_found` and the agent has to re-read and quote verbatim.
-- **Evidence is highlighted for the reviewer.** In the desk the quoted span is highlighted inside the answer, so reviewing a verdict takes seconds.
-- **The human decides.** Each case shows three verdicts side by side: the agent, a deterministic keyword baseline, and yours. One click approves or overrules. An optional note says why.
-- **Overrules become regression tests.** When your verdict differs from the agent's, the case is flagged `REGRESSION`. **Export regressions** downloads one JSON line per test: prompt, answer, expected verdict, what the grader said, and your note. [Example](docs/example-regressions.jsonl).
-- **A scoreboard that compares against a baseline.** Agreement of the agent with the human, and of the keyword baseline with the human, on reviewed cases.
-- **An audit trail.** Every agent verdict, human approval, overrule, and undo is logged with actor (`agent` or `human`) and time.
+- **A suite is a policy plus the answers to grade.** The ABCD suite uses the dataset's verbatim "Return Due to Size" guideline. Each case is a full chat, including the agent's logged actions (`[action] ...`). The app marks each suite with a badge: **Real public data · ABCD · MIT License** or **Synthetic data**.
+- **The agent grades with evidence.**
+  - **Ask agent to grade** sends the current grader prompt version to the agent.
+  - The agent calls `record-verdict` once per case with PASS or FAIL, a reason, and an **exact quote**.
+  - The server rejects quotes that are not in the answer (`evidence_not_found`).
+- **The human reviews from the keyboard.**
+  - **P** marks a pass, **F** a fail, **J**/**K** move to the next or previous case, and **U** undoes.
+  - The agent's quote is highlighted in the chat.
+  - When your verdict differs from the agent's, the case becomes a `REGRESSION` test, along with your note.
+- **A second reviewer, labeled honestly.**
+  - **Run simulated reviewer** applies a deterministic checklist to the ABCD guideline: did the action log include Pull up Account, Validate Purchase, and Membership Privileges?
+  - The app tags it **simulated reviewer · not a person**.
+  - A real second person can add verdicts in the same panel; those are tagged `human`, and the agent cannot add them (`human_only`).
+  - The scoreboard shows Cohen's kappa for each reviewer against the primary human, and for the agent.
+- **Versioned grader prompts with a diff.** The **Grader prompt** tab shows every version and a line diff. You can save a new version from there; an agent proposal needs your approval.
+- **Release gate.**
+  - **Export regressions** downloads JSONL with the policy, chat, expected verdict, the grader's verdict, and your note.
+  - `node scripts/release-gate.mjs --tests file.jsonl --prompt prompts/grader-vN.txt` re-grades every test with the new prompt. A test passes only if the verdict matches the human's and the quote is verbatim.
+  - Any failure prints `Release BLOCKED` and exits with code 1.
+  - `.github/workflows/release-gate.yml` runs this on pull requests that touch `prompts/`.
+- **Audit trail.** Agent verdicts, human approvals and overrules, simulated reviews, prompt versions, and undos are all logged with the actor and the time.
 
-![Evidence highlighted inside the answer](docs/img/04-evidence-highlight.png)
+![Second reviewer: simulated, labeled as not a person](docs/img/14-abcd-second-reviewer.png)
 
-![Overruling the agent on the gift-card case](docs/img/05-overrule.png)
+![Grader prompt v1 → v2 diff](docs/img/16-abcd-prompt-diff.png)
+
+## Results on real public data (ABCD, 12 chats, one run)
+
+| Grader | Agrees with the primary human | Cohen's kappa |
+| --- | --- | --- |
+| EvalDesk agent (Nemotron 3 Ultra) | 9 / 12 (75%) | 0.25 |
+| Keyword baseline (`order id; membership`) | 9 / 12 (75%) | not computed |
+| Simulated reviewer (step checklist, not a person) | 6 / 12 | 0.08 |
+
+What the disagreements show:
+
+- **The checklist is the wrong tool on its own.** It fails chats where the agent asked the membership level in conversation but never clicked the logged step, even when the outcome was correct (for example #10124 and #4899, both Gold).
+- **The LLM agent can be lenient.** It passed #7671, where a Bronze customer was turned away past 90 days without being asked for the receipt or packaging that the guideline accepts. It also passed #3764, where the agent verified identity but never validated the purchase.
+- **The human verdicts are listed in [docs/DATA.md](docs/DATA.md)** with a reason for each, so anyone can check or dispute them. In the recorded demo the clicks were scripted; the verdicts were chosen by reading each chat against the guideline.
+
+The three overrules became the regression tests in [`tests/regressions/abcd-returns-regressions.jsonl`](tests/regressions/abcd-returns-regressions.jsonl).
+
+### Release gate, real output
+
+| Grader prompt | Result | Why |
+| --- | --- | --- |
+| [v1](prompts/grader-v1.txt) (default) | **BLOCKED**, 2/3 | passed #3764, which the human failed |
+| [v2](prompts/grader-v2.txt) (judge outcomes) | **BLOCKED**, 2/3 | same case |
+| [v3](prompts/grader-v3.txt) (+ "identity check is not purchase validation") | **BLOCKED**, 2/3 | right verdict, but the evidence was paraphrased, not verbatim |
+| [v4](prompts/grader-v4.txt) (+ "copy the quote character for character") | **ALLOWED**, 3/3 | |
+
+Reports: [`docs/gate/`](docs/gate). The model was `nvidia/Nemotron-3-Ultra-550b-a55b`, called through an OpenAI-compatible endpoint (Nebius AI Studio). The script also works with OpenRouter, including its free models. This is one run on three tests, so it shows the gate working, not a benchmark result.
+
+![Release gate output](docs/img/17-release-gate.png)
+
+## Synthetic suite (earlier run)
+
+On the synthetic "Refund bot v3" suite (12 invented answers, 5 refund rules), the agent agreed with the human on 11/12 cases and the keyword baseline on 7/12, in one earlier run on the free OpenRouter model `nvidia/nemotron-3-ultra-550b-a55b:free`. That data is synthetic and labeled as such in the app.
 
 ## Guardrails (enforced on the server, not in the prompt)
 
 | Rule | How | What the agent sees |
 | --- | --- | --- |
-| Verdicts must quote the answer | `record-verdict` normalizes case/whitespace and checks the quote (8+ chars) is a substring of the answer | `422 evidence_not_found` |
+| Verdicts must quote the answer | `record-verdict` normalizes case and whitespace, then checks that the quote (8+ characters) is a substring of the answer | `422 evidence_not_found` |
 | The agent cannot overwrite a person | `record-verdict` refuses any case that has a human verdict, inside the same transaction as the write | `409 human_locked` |
-| Human verdicts belong to humans | `review-case` and `reopen-case` use Agent-Native's `needsApproval`: clicks in the UI run directly; an agent (or CLI) call stops until the person approves that exact call | approval card in chat |
-
-Real CLI output from the local smoke test:
+| Human verdicts belong to humans | `review-case`, `reopen-case` and `save-prompt-version` use `needsApproval`. `add-review` refuses non-human callers | approval card / `403 human_only` |
 
 ![Guardrails](docs/img/07-guardrails.png)
 
-## Validation (synthetic suite, one run, one reviewer)
-
-| | Agrees with the human |
-| --- | --- |
-| Agent (free open-weight model via OpenRouter: `nvidia/nemotron-3-ultra-550b-a55b:free`) | **11 / 12 (91.7%)** |
-| Keyword baseline (every required phrase present) | **7 / 12 (58.3%)** |
-
-The agent graded all 12 cases in one run (the chat shows "Worked for 45s"). It caught the three answers the keyword check waved through: a cash refund on day 45 (rule 2), a full refund on a final-sale item (rule 4), and an invented "Gold loyalty" perk (rule 5). It also failed the answer that asked for a full card number. I overruled one verdict: on the gift-card case the bot correctly refused the refund but added "you can still send it to someone else", which I judged a promise outside the policy (rule 5). That case is now the suite's one regression test.
-
-This is a single run on 12 synthetic cases with one reviewer. It shows the workflow works; it is not a benchmark.
-
-![Scoreboard](docs/img/06-scoreboard.png)
-
 ## How it uses Agent-Native
 
-- **One action, every surface.** Eleven `defineAction()` actions in [`actions/`](actions) are the whole contract. The React desk calls them with `useActionQuery` / `useActionMutation`; the agent calls the same code as tools; they also work from the CLI (`pnpm action record-verdict ...`), HTTP, and MCP.
-- **The UI hands work to the agent.** "Ask agent to grade" and "Ask the agent why" use `sendToAgentChat` to open the agent sidebar with a bounded instruction. The desk refreshes live as each `record-verdict` call lands.
-- **Shared context.** The navigation state exposes `suiteId` and `caseId`, so "why did you fail this one?" works on whatever case is on screen.
-- **Human-in-the-loop by framework, not convention.** `needsApproval` on the human-verdict actions; `fail()` with stable error codes for the guardrails.
-- **Access and data.** Suites are shareable resources (`ownableColumns`, `registerShareableResource`, `accessFilter`): org-visible when an org is active, private otherwise. Cases and audit events inherit the suite's access. Postgres (PGlite locally) with additive migrations.
+- **One action, every surface.** Fifteen `defineAction()` actions in [`actions/`](actions) make up the whole contract. The React desk calls them through `useActionQuery` / `useActionMutation`. The agent calls the same code as tools. They also work from the CLI, over HTTP, and through MCP.
+- **The UI hands work to the agent.** "Ask agent to grade" and "Ask the agent why" use `sendToAgentChat` with the current prompt version. The desk updates live as each `record-verdict` lands.
+- **Shared context.** The navigation state exposes `suiteId` and `caseId`, so the agent can see which case is on screen.
+- **Human in the loop, enforced by the framework.** `needsApproval` on human-owned actions, `ctx.caller` to keep the agent from posing as a reviewer, and `fail()` with stable error codes.
+- **Access and data.** Suites are shareable resources (`ownableColumns`, `registerShareableResource`, `accessFilter`). Storage is Postgres (PGlite locally) with additive migrations (v1, v2).
 
 ## Run it locally
 
@@ -80,32 +137,45 @@ Requires Node.js 22.22+ and pnpm.
 ```bash
 pnpm install
 cp .env.example .env
-# pick any LLM the framework supports, e.g. a free OpenRouter model:
+# any LLM the framework supports, for example a free OpenRouter model:
 #   OPENROUTER_API_KEY=...
 #   AGENT_ENGINE=ai-sdk:openrouter
 #   AGENT_MODEL=nvidia/nemotron-3-ultra-550b-a55b:free
+# or an OpenAI-compatible endpoint:
+#   AGENT_ENGINE=ai-sdk:openai  OPENAI_BASE_URL=...  OPENAI_API_KEY=...  AGENT_MODEL=...
 pnpm dev
 ```
 
-Choose **Continue as local dev**, open **EvalDesk** in the sidebar, click **Load synthetic demo suite**, then **Ask agent to grade**.
+Choose **Continue as local dev**, open **EvalDesk**, and click **Load real public-data suite (ABCD, MIT)** or **Load synthetic demo suite**. Then click **Ask agent to grade**.
 
-**Testing.** `pnpm test` (8 unit tests for the evidence check, baseline, report, and export), `pnpm typecheck`, `pnpm agent-native:doctor` (clean).
+Release gate: `GATE_API_KEY=... [GATE_BASE_URL=...] node scripts/release-gate.mjs --tests tests/regressions/abcd-returns-regressions.jsonl --prompt prompts/grader-v4.txt`
 
-Note: `pnpm-workspace.yaml` sets `node-pty: false` so installs work on machines without build tools; it only disables the optional in-app terminal.
+**Testing.** `pnpm test` runs 13 unit tests covering the evidence check, baseline, report, export, the simulated-reviewer checklist, Cohen's kappa, and the line diff. Also run `pnpm typecheck` and `pnpm agent-native:doctor`.
+
+`pnpm-workspace.yaml` sets `node-pty: false` so installs work without build tools. This only disables the optional in-app terminal.
 
 ## What existed before, and what is new
 
-- **Pre-existing:** the Agent-Native Chat template, generated with `npx @agent-native/core@latest create --template chat` (the first commit in this repo, unmodified). Third-party libraries are listed in `package.json`.
-- **New during the hackathon (Nov 2, 2026):** the database schema and migration, the 11 EvalDesk actions, the evidence check, keyword baseline, scoreboard, audit trail, JSONL export, the review desk UI (`app/routes/desk*`), the synthetic demo suite, the agent instructions, unit tests, and this README.
-- The idea follows a common evaluation pattern (LLM-as-judge plus human review); no code, text, or assets were copied from other projects.
+- **Pre-existing:**
+  - The Agent-Native Chat template, generated with `npx @agent-native/core@latest create --template chat`. It is the first commit in this repo, unmodified.
+  - Third-party libraries, listed in `package.json`.
+  - The ABCD dataset (ASAPP Research, MIT). Its chats and guideline text are used verbatim, as described in [docs/DATA.md](docs/DATA.md).
+- **New during the hackathon (Nov 2, 2026):**
+  - The schema and migrations, and all 15 EvalDesk actions.
+  - The evidence check, keyword baseline, scoreboard with kappa, and audit trail.
+  - The review desk UI (`app/routes/desk*`) and keyboard review.
+  - The simulated reviewer, prompt versions with diff, the release gate script, and the CI workflow.
+  - The synthetic suite, the ABCD suite selection, the agent instructions, unit tests, and this README.
+- The idea follows a common evaluation pattern: an LLM acting as judge, plus human review. No code, text, or assets were copied from other evaluation projects.
 
 ## Limits and next steps
 
-- Synthetic data only; no real customer conversations were used.
-- One reviewer. Next: two reviewers per case and inter-rater agreement.
-- The free model is rate-limited; on two later runs it stopped part-way and needed a retry. Any model the framework supports can be used.
-- Next: run the exported regressions automatically against a new grader prompt and block the release when one fails.
+- 12 real chats from one ABCD subflow, and 3 regression tests. This shows the workflow; it is not a benchmark.
+- The second reviewer in the demo is **simulated** (a rule-based checklist). No second person has reviewed these cases yet. The app supports one.
+- The human verdicts were entered by scripted clicks in the recording and chosen by the project author (see docs/DATA.md).
+- Free model tiers are rate-limited. The recorded run used Nemotron 3 Ultra on a paid OpenAI-compatible endpoint, and the agent needed three follow-up messages to finish grading.
+- The CI workflow needs a `GATE_API_KEY` repository secret before it can run.
 
 ## License
 
-MIT
+MIT. ABCD data © 2021 ASAPP Research, MIT License ([docs/ABCD-LICENSE.txt](docs/ABCD-LICENSE.txt)).

@@ -1,0 +1,6 @@
+PASS  ABCD dev #7671 (bronze)  expected=fail got=fail
+PASS  ABCD dev #4899 (gold)  expected=pass got=pass
+FAIL  ABCD test #3764 (gold)  expected=fail got=pass (evidence not verbatim)
+
+2/3 regression tests pass. Release BLOCKED.
+exit code: 1

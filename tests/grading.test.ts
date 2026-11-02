@@ -6,7 +6,11 @@ import {
   computeReport,
   evidenceFound,
   toRegressionJsonl,
+  abcdChecklist,
+  cohenKappa,
+  lineDiff,
 } from "../server/lib/grading";
+import { ABCD_CASES } from "../server/lib/abcd-suite";
 
 describe("evidenceFound", () => {
   const answer = "Yes. You are within 30 days of delivery, so we refund your original payment method.";
@@ -74,5 +78,40 @@ describe("toRegressionJsonl", () => {
     const lines = out.split("\n");
     expect(lines).toHaveLength(1);
     expect(JSON.parse(lines[0])).toMatchObject({ expected_verdict: "fail", grader_said: "pass" });
+  });
+});
+
+describe("abcdChecklist (simulated reviewer)", () => {
+  it("passes a chat whose action log has every required step", () => {
+    const log = "[action] Account has been pulled up for X.\n[action] Purchase validation in progress ...\n[action] Membership level of Gold has been noted.";
+    expect(abcdChecklist(log).verdict).toBe("pass");
+  });
+  it("names the missing guideline step", () => {
+    const r = abcdChecklist("[action] Account has been pulled up for X.\n[action] Purchase validation in progress ...");
+    expect(r.verdict).toBe("fail");
+    expect(r.note).toContain("Membership Privileges");
+  });
+  it("labels the bundled ABCD cases: 5 complete, 7 missing a step", () => {
+    const verdicts = ABCD_CASES.map((c) => abcdChecklist(c.answer).verdict);
+    expect(verdicts.filter((v) => v === "pass")).toHaveLength(5);
+  });
+});
+
+describe("cohenKappa", () => {
+  it("is 1 for perfect agreement and 0 for chance-level", () => {
+    expect(cohenKappa([["pass", "pass"], ["fail", "fail"]]).kappa).toBe(1);
+    expect(cohenKappa([["pass", "pass"], ["pass", "fail"], ["fail", "pass"], ["fail", "fail"]]).kappa).toBe(0);
+  });
+});
+
+describe("lineDiff", () => {
+  it("marks added and removed lines", () => {
+    const d = lineDiff("a\nb\nc", "a\nc\nd");
+    expect(d).toEqual([
+      { op: "same", text: "a" },
+      { op: "del", text: "b" },
+      { op: "same", text: "c" },
+      { op: "add", text: "d" },
+    ]);
   });
 });

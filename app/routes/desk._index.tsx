@@ -26,6 +26,10 @@ export default function DeskIndex() {
     },
     onError: (error) => toast.error(actionErrorMessage(error) ?? "Could not create suite"),
   });
+  const seedPublic = useActionMutation("seed-public-suite", {
+    onSuccess: (result) => navigate(`/desk/${result.id}`),
+    onError: (error) => toast.error(actionErrorMessage(error) ?? "Could not load the ABCD suite"),
+  });
   const seed = useActionMutation("seed-demo-suite", {
     onSuccess: (result) => navigate(`/desk/${result.id}`),
     onError: (error) => toast.error(actionErrorMessage(error) ?? "Could not create demo"),
@@ -47,6 +51,7 @@ export default function DeskIndex() {
           <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
             Suites
           </h2>
+          <div className="flex flex-wrap justify-end gap-2">
           <Button
             variant="outline"
             size="sm"
@@ -55,6 +60,16 @@ export default function DeskIndex() {
           >
             <IconSparkles className="size-4" /> Load synthetic demo suite
           </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={seedPublic.isPending}
+            onClick={() => seedPublic.mutate({})}
+            title="12 human-written support chats from the ABCD dataset (ASAPP Research, MIT License)"
+          >
+            <IconSparkles className="size-4" /> Load real public-data suite (ABCD, MIT)
+          </Button>
+          </div>
         </div>
         {isPending ? (
           <div className="grid gap-2">
@@ -72,6 +87,15 @@ export default function DeskIndex() {
                   <IconFlask className="size-4 text-muted-foreground" />
                   <span className="font-medium">{suite.name}</span>
                   <span className="truncate text-sm text-muted-foreground">
+                    <span
+                      className={
+                        suite.dataKind === "public"
+                          ? "mr-1 rounded bg-sky-500/15 px-1 text-[10px] font-semibold text-sky-700"
+                          : "mr-1 rounded bg-violet-500/15 px-1 text-[10px] font-semibold text-violet-700"
+                      }
+                    >
+                      {suite.dataKind === "public" ? "REAL PUBLIC DATA" : "SYNTHETIC"}
+                    </span>
                     {suite.description}
                   </span>
                 </Link>

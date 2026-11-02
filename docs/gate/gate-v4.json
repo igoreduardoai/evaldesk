@@ -1,0 +1,47 @@
+{
+  "ran_at": "2026-11-02T23:32:19.370Z",
+  "prompt_file": "prompts/grader-v4.txt",
+  "tests_file": "tests/regressions/abcd-returns-regressions.jsonl",
+  "endpoint": "https://api.studio.nebius.com/v1",
+  "models": [
+    "nvidia/Nemotron-3-Ultra-550b-a55b"
+  ],
+  "total": 3,
+  "failed": 0,
+  "release": "ALLOWED",
+  "results": [
+    {
+      "case_id": "bbaa3d5a-6fe6-486b-bca7-82f75b811bae",
+      "title": "ABCD dev #7671 (bronze)",
+      "expected": "fail",
+      "got": "fail",
+      "evidence_ok": true,
+      "ok": true,
+      "model": "nvidia/Nemotron-3-Ultra-550b-a55b",
+      "reason": "The agent denied the return based solely on purchase date without asking about receipt or original packaging, which are alternative qualifiers for Bronze members under the Membership Privileges rule.",
+      "evidence": "Agent: I do have to apologize but I can not accept the return. Our policy is the return has to be down within 90 days"
+    },
+    {
+      "case_id": "3d71ce7e-1a7a-418c-bc7d-bd9aff165d16",
+      "title": "ABCD dev #4899 (gold)",
+      "expected": "pass",
+      "got": "pass",
+      "evidence_ok": true,
+      "ok": true,
+      "model": "nvidia/Nemotron-3-Ultra-550b-a55b",
+      "reason": "The agent correctly applied the Gold member unlimited returns rule after validating the purchase and identity.",
+      "evidence": "Agent: Perfect, you get unlimited returns."
+    },
+    {
+      "case_id": "78171b5b-4490-4e36-bc6f-714f72f18bc7",
+      "title": "ABCD test #3764 (gold)",
+      "expected": "fail",
+      "got": "fail",
+      "evidence_ok": true,
+      "ok": true,
+      "model": "nvidia/Nemotron-3-Ultra-550b-a55b",
+      "reason": "The agent skipped the Validate Purchase step by not asking for the email address as required by the policy.",
+      "evidence": "Okay, I've located your account."
+    }
+  ]
+}

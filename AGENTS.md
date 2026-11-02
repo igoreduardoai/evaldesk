@@ -41,12 +41,20 @@ Grade LLM answers against a written policy; a human approves or overrules each v
 - `review-case` and `reopen-case` are the human's verdict and need approval when the agent calls them. Never call them unless the user asks you to record their verdict.
 - The keyword baseline is deterministic (every `mustInclude` phrase present). Agreement rates compare agent and baseline to human verdicts.
 - On desk pages `navigation` adds `suiteId` and `caseId`.
+- Suites carry `dataKind` (`synthetic` | `public`) and a source/license. Always say which. The ABCD suite is real public data (MIT); the demo suite is synthetic.
+- The "simulated reviewer" is a deterministic checklist, never a person. `add-review` is for a real second person and refuses agent calls (`human_only`).
+- Grade with the latest grader prompt (`list-prompt-versions`). New versions go through `save-prompt-version` (approval). Before shipping one, run `scripts/release-gate.mjs` on the exported tests; any failure blocks the release.
 
 | Action | Purpose |
 | --- | --- |
 | list-suites | Suites the user can see |
 | create-suite | New suite with a policy |
 | seed-demo-suite | Synthetic 12-case demo |
+| seed-public-suite | 12 real ABCD chats (MIT) |
+| run-simulated-reviewer | Checklist 2nd reviewer (not a person) |
+| add-review | Second human reviewer |
+| list-prompt-versions | Grader prompt versions |
+| save-prompt-version | New grader prompt (approval) |
 | add-cases | Batch-add answers |
 | list-cases | Cases, baseline, report |
 | record-verdict | Agent verdict with quote |

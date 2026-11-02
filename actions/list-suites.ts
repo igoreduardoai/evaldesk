@@ -21,6 +21,7 @@ export default defineAction({
         id: suites.id,
         name: suites.name,
         description: suites.description,
+        dataKind: suites.dataKind,
         createdAt: suites.createdAt,
       })
       .from(suites)

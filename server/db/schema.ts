@@ -11,6 +11,10 @@ export const suites = pgTable("suites", {
   name: text("name").notNull(),
   description: text("description").notNull().default(""),
   policy: text("policy").notNull().default(""),
+  dataKind: text("data_kind").notNull().default("synthetic"),
+  sourceName: text("source_name").notNull().default(""),
+  sourceUrl: text("source_url").notNull().default(""),
+  sourceLicense: text("source_license").notNull().default(""),
   createdAt: text("created_at")
     .notNull()
     .default(sql`now()`),
@@ -35,6 +39,7 @@ export const evalCases = pgTable("eval_cases", {
   humanNote: text("human_note"),
   reviewedAt: text("reviewed_at"),
   isRegression: boolean("is_regression").notNull().default(false),
+  sourceRef: text("source_ref").notNull().default(""),
   ownerEmail: text("owner_email").notNull(),
   orgId: text("org_id"),
   createdAt: text("created_at")
@@ -50,6 +55,32 @@ export const auditEvents = pgTable("audit_events", {
   actor: text("actor").notNull(),
   kind: text("kind").notNull(),
   detail: text("detail").notNull().default(""),
+  ownerEmail: text("owner_email").notNull(),
+  orgId: text("org_id"),
+  createdAt: text("created_at").notNull(),
+});
+
+// Additional reviewers per case (a second human, or a clearly labeled simulated reviewer).
+export const reviews = pgTable("reviews", {
+  id: text("id").primaryKey(),
+  suiteId: text("suite_id").notNull(),
+  caseId: text("case_id").notNull(),
+  reviewer: text("reviewer").notNull(),
+  reviewerKind: text("reviewer_kind").notNull(),
+  verdict: text("verdict").notNull(),
+  note: text("note").notNull().default(""),
+  ownerEmail: text("owner_email").notNull(),
+  orgId: text("org_id"),
+  createdAt: text("created_at").notNull(),
+});
+
+// Versioned grader prompts: the instruction the agent follows when grading.
+export const promptVersions = pgTable("prompt_versions", {
+  id: text("id").primaryKey(),
+  suiteId: text("suite_id").notNull(),
+  version: integer("version").notNull(),
+  text: text("text").notNull(),
+  note: text("note").notNull().default(""),
   ownerEmail: text("owner_email").notNull(),
   orgId: text("org_id"),
   createdAt: text("created_at").notNull(),

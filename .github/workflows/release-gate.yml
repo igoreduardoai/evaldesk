@@ -1,0 +1,26 @@
+# Blocks a pull request that changes the grader prompt when any exported
+# regression test fails. Add the repository secret GATE_API_KEY (and optionally
+# the variable GATE_BASE_URL / GATE_MODEL for a non-OpenRouter endpoint).
+name: release-gate
+on:
+  pull_request:
+    paths: ["prompts/**", "tests/regressions/**"]
+  workflow_dispatch:
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run regression tests against the newest grader prompt
+        env:
+          GATE_API_KEY: ${{ secrets.GATE_API_KEY }}
+          GATE_BASE_URL: ${{ vars.GATE_BASE_URL }}
+          GATE_MODEL: ${{ vars.GATE_MODEL }}
+        run: |
+          PROMPT=$(ls prompts/grader-v*.txt | sort -V | tail -1)
+          for f in tests/regressions/*.jsonl; do
+            node scripts/release-gate.mjs --tests "$f" --prompt "$PROMPT" --out "gate-$(basename "$f" .jsonl).json"
+          done

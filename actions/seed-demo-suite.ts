@@ -29,6 +29,8 @@ export default defineAction({
         name,
         description: "Support-bot answers about refunds for a fictional store. All data is synthetic.",
         policy: DEMO_POLICY,
+        dataKind: "synthetic",
+        sourceName: "Synthetic: written for this demo (fictional store)",
         ownerEmail,
         orgId,
         visibility: orgId ? "org" : "private",

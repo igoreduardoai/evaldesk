@@ -13,6 +13,10 @@ export async function loadSuite(suiteId: string) {
       name: suites.name,
       description: suites.description,
       policy: suites.policy,
+      dataKind: suites.dataKind,
+      sourceName: suites.sourceName,
+      sourceUrl: suites.sourceUrl,
+      sourceLicense: suites.sourceLicense,
       orgId: suites.orgId,
     })
     .from(suites)
@@ -61,3 +65,5 @@ export function auditRow(input: {
 export function actorFor(ctx: { caller?: string } | undefined): "agent" | "human" {
   return ctx?.caller === "frontend" || ctx?.caller === "cli" ? "human" : "agent";
 }
+
+export const SIMULATED_REVIEWER = "Simulated reviewer (guideline checklist)";
