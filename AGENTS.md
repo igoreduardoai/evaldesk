@@ -31,3 +31,26 @@ Use `adding-a-feature` for functional parity and `frontend-design` for a user-fa
 Before building common workspace or agent UI, read `agent-native-toolkit`; for supported customization, read `customizing-agent-native`.
 
 - Guarded verification: run `pnpm agent-native:doctor`; fix findings before done.
+
+## EvalDesk
+
+Grade LLM answers against a written policy; a human approves or overrules each verdict, and every overrule becomes a regression test. `/desk` lists suites; `/desk/:suiteId?case=<id>` is the review desk.
+
+- Suites are org-visible with an active org, else private. Cases and audit events inherit the suite's access.
+- `record-verdict` is the agent's verdict. Evidence must be an exact quote (8+ chars) from the answer, else `evidence_not_found` (422): re-read and quote verbatim. A reviewed case rejects agent writes with `human_locked` (409): report it, don't retry.
+- `review-case` and `reopen-case` are the human's verdict and need approval when the agent calls them. Never call them unless the user asks you to record their verdict.
+- The keyword baseline is deterministic (every `mustInclude` phrase present). Agreement rates compare agent and baseline to human verdicts.
+- On desk pages `navigation` adds `suiteId` and `caseId`.
+
+| Action | Purpose |
+| --- | --- |
+| list-suites | Suites the user can see |
+| create-suite | New suite with a policy |
+| seed-demo-suite | Synthetic 12-case demo |
+| add-cases | Batch-add answers |
+| list-cases | Cases, baseline, report |
+| record-verdict | Agent verdict with quote |
+| review-case | Human verdict (approval) |
+| reopen-case | Undo human verdict |
+| export-regressions | Overrules as JSONL |
+| list-audit | Agent/human event log |

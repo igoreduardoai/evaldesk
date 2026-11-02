@@ -15,6 +15,7 @@ import { openCommandMenu } from "@agent-native/toolkit/app/shared";
 import { AgentNativeIcon } from "@agent-native/toolkit/app/shared/AgentNativeIcon";
 import {
   IconEdit,
+  IconFlask,
   IconHome,
   IconLayoutSidebarLeftCollapse,
   IconLayoutSidebarLeftExpand,
@@ -408,6 +409,21 @@ export function Sidebar({
         )}
       >
         <HomeNavLink collapsed={collapsed} />
+        <div className={collapsed ? undefined : "px-2 pb-1"}>
+          <Link
+            to="/desk"
+            aria-label={collapsed ? "EvalDesk" : undefined}
+            className={cn(
+              "flex items-center text-sidebar-accent-foreground transition-colors hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+              collapsed
+                ? "size-10 justify-center rounded-md"
+                : "h-10 w-full gap-3 rounded-lg px-3 text-sm font-medium",
+            )}
+          >
+            <IconFlask className="size-4 shrink-0" strokeWidth={1.8} />
+            <span className={collapsed ? "sr-only" : "truncate"}>EvalDesk</span>
+          </Link>
+        </div>
         <ChatThreadsSection collapsed={collapsed} />
       </nav>
 

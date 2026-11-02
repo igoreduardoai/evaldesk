@@ -18,13 +18,16 @@ export interface NavigationState {
   path?: string;
   publicPath?: string;
   threadId?: string;
+  suiteId?: string;
+  caseId?: string;
 }
 
 export function useNavigationState() {
   useAgentRouteState<NavigationState>({
     browserTabId: TAB_ID,
     requestSource: TAB_ID,
-    getNavigationState: ({ pathname }) => navigationStateForPath(pathname),
+    getNavigationState: ({ pathname, searchParams }) =>
+      navigationStateForPath(pathname, searchParams),
     getCommandPath: commandPathForNavigation,
   });
 }
@@ -62,9 +65,16 @@ function matchesPathPrefix(pathname: string, prefix: string): boolean {
   return pathname === prefix || pathname.startsWith(`${prefix}/`);
 }
 
-export function navigationStateForPath(pathname: string): NavigationState {
+export function navigationStateForPath(
+  pathname: string,
+  searchParams?: URLSearchParams,
+): NavigationState {
   const threadId = threadIdFromPath(pathname);
+  const suiteId = pathname.match(/^\/desk\/([^/]+)/)?.[1];
+  const caseId = searchParams?.get("case");
   return {
+    ...(suiteId ? { suiteId: decodeURIComponent(suiteId) } : {}),
+    ...(caseId ? { caseId } : {}),
     view: viewForPath(pathname),
     path: pathname,
     publicPath: appPathFromLocalRoute(pathname),
@@ -73,6 +83,7 @@ export function navigationStateForPath(pathname: string): NavigationState {
 }
 
 function viewForPath(pathname: string): string {
+  if (pathname.startsWith("/desk")) return "desk";
   if (isChatPathname(pathname)) return "chat";
   if (pathname === HOME_PATH) return "home";
   if (pathname.startsWith("/database")) return "database";
@@ -93,6 +104,8 @@ function pathForView(view?: string): string {
       return NEW_CHAT_PATH;
     case "home":
       return HOME_PATH;
+    case "desk":
+      return "/desk";
     case "database":
       return "/database";
     case "extensions":
