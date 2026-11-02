@@ -4,9 +4,18 @@
 
 EvalDesk is an [Agent-Native](https://www.agent-native.com) app (Builder.io's open-source framework) for the boring, important part of shipping an LLM feature: checking whether its answers actually follow your written policy. An agent does the first pass and has to show its work. A person makes the final call in a review desk built for speed. The disagreements, the cases where the person had to correct the agent, are exported as JSONL regression tests, so the next version of your grader prompt has to get them right.
 
+## At a glance
+
+- **What:** an Agent-Native review desk where the agent grades LLM answers against your written policy with an exact quote as evidence, you approve or overrule, and overrules are exported as JSONL regression tests.
+- **Video (2:17):** public Clips link in the submission · download: [release v0.1.0](https://github.com/igoreduardoai/evaldesk/releases/tag/v0.1.0)
+- **Code:** this repo (MIT). Run locally with `pnpm install && pnpm dev`, then **Load synthetic demo suite**.
+- **Proof:** agent 11/12 agreement with the human vs 7/12 for a keyword baseline (synthetic suite, one run) · 8/8 unit tests · Agent-Native doctor clean · 3 server-side guardrails.
+
 Built for the [Agent-Native Hackathon](https://www.builder.io/hackathon) (Oct 27 – Nov 9, 2026). All demo data is **synthetic**: a fictional store, a fictional refund policy, twelve invented support-bot answers.
 
 ![Review desk after the agent graded all 12 cases](docs/img/03-agent-graded.png)
+
+![Suites list](docs/img/01-desk.png)
 
 ## The problem
 
@@ -29,6 +38,8 @@ LLM-as-judge tools speed up step 2, but a judge that is never corrected, never h
 
 ![Evidence highlighted inside the answer](docs/img/04-evidence-highlight.png)
 
+![Overruling the agent on the gift-card case](docs/img/05-overrule.png)
+
 ## Guardrails (enforced on the server, not in the prompt)
 
 | Rule | How | What the agent sees |
@@ -41,7 +52,7 @@ Real CLI output from the local smoke test:
 
 ![Guardrails](docs/img/07-guardrails.png)
 
-## Demo result (synthetic suite, one run, one reviewer)
+## Validation (synthetic suite, one run, one reviewer)
 
 | | Agrees with the human |
 | --- | --- |
@@ -78,7 +89,7 @@ pnpm dev
 
 Choose **Continue as local dev**, open **EvalDesk** in the sidebar, click **Load synthetic demo suite**, then **Ask agent to grade**.
 
-Checks: `pnpm test` (8 unit tests for the evidence check, baseline, report, and export), `pnpm typecheck`, `pnpm agent-native:doctor` (clean).
+**Testing.** `pnpm test` (8 unit tests for the evidence check, baseline, report, and export), `pnpm typecheck`, `pnpm agent-native:doctor` (clean).
 
 Note: `pnpm-workspace.yaml` sets `node-pty: false` so installs work on machines without build tools; it only disables the optional in-app terminal.
 
