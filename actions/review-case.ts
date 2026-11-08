@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { getDb, schema } from "../server/db/index.js";
+import { humanReviewKind } from "../server/lib/review-flow.js";
 import { actorFor, auditRow, loadCase } from "../server/lib/suites.js";
 
 export default defineAction({
@@ -26,7 +27,8 @@ export default defineAction({
   run: async (args, ctx) => {
     const ownerEmail = ctx?.userEmail ?? fail("Sign in first.", { statusCode: 401 });
     const { row, suite } = await loadCase(args.caseId);
-    const overrule = Boolean(row.agentVerdict && row.agentVerdict !== args.verdict);
+    const hadAgentVerdict = Boolean(row.agentVerdict);
+    const overrule = hadAgentVerdict && row.agentVerdict !== args.verdict;
     const c = schema.evalCases;
     return getDb().transaction(async (tx) => {
       await tx
@@ -43,7 +45,7 @@ export default defineAction({
           suiteId: suite.id,
           caseId: row.id,
           actor: actorFor(ctx),
-          kind: overrule ? "human_overrule" : "human_approve",
+          kind: humanReviewKind(row.agentVerdict, overrule),
           detail: `${args.verdict.toUpperCase()}${args.note ? `: ${args.note}` : ""}`,
           ownerEmail,
           orgId: suite.orgId,
@@ -54,6 +56,7 @@ export default defineAction({
         suiteId: suite.id,
         verdict: args.verdict,
         overrule,
+        hadAgentVerdict,
         isRegression: overrule,
       };
     });

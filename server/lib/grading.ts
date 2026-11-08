@@ -18,6 +18,63 @@ export function evidenceFound(answer: string, quote: string): boolean {
   return normalize(answer).includes(q);
 }
 
+/**
+ * Original-text span for a quote that `evidenceFound` would accept.
+ * Whitespace is collapsed the same way as the server check, so a quote the
+ * server stores can still be marked in the answer.
+ */
+export function highlightSpan(
+  text: string,
+  quote: string | null | undefined,
+): { start: number; end: number } | null {
+  if (!quote) return null;
+  const needle = normalize(quote);
+  if (needle.length < 8) return null;
+  const { norm, starts, ends } = normalizeWithSpans(text);
+  const at = norm.indexOf(needle);
+  if (at < 0) return null;
+  const start = starts[at];
+  const end = ends[at + needle.length - 1];
+  if (start === undefined || end === undefined) return null;
+  return { start, end };
+}
+
+function normalizeWithSpans(text: string): { norm: string; starts: number[]; ends: number[] } {
+  const folded: string[] = [];
+  const origin: number[] = [];
+  for (let i = 0; i < text.length; i++) {
+    const raw = text[i] ?? "";
+    let ch = raw.toLowerCase();
+    if (ch === "\u2018" || ch === "\u2019") ch = "'";
+    else if (ch === "\u201c" || ch === "\u201d") ch = '"';
+    folded.push(ch);
+    origin.push(i);
+  }
+  let norm = "";
+  const starts: number[] = [];
+  const ends: number[] = [];
+  let i = 0;
+  while (i < folded.length && /\s/.test(folded[i] ?? "")) i++;
+  while (i < folded.length) {
+    const ch = folded[i] ?? "";
+    if (/\s/.test(ch)) {
+      let j = i;
+      while (j < folded.length && /\s/.test(folded[j] ?? "")) j++;
+      if (j >= folded.length) break;
+      norm += " ";
+      starts.push(origin[i] ?? i);
+      ends.push((origin[j - 1] ?? j - 1) + 1);
+      i = j;
+      continue;
+    }
+    norm += ch;
+    starts.push(origin[i] ?? i);
+    ends.push((origin[i] ?? i) + 1);
+    i++;
+  }
+  return { norm, starts, ends };
+}
+
 export function parseMustInclude(raw: string): string[] {
   return raw
     .split(/[;\n]/)
