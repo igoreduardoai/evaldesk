@@ -25,7 +25,8 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { DEFAULT_GRADER_PROMPT, lineDiff } from "../../server/lib/grading";
+import { DEFAULT_GRADER_PROMPT, highlightSpan, lineDiff } from "../../server/lib/grading";
+import { humanVerdictCopy, reviewSavedMessage, undoTarget } from "../../server/lib/review-flow";
 import { cn } from "@/lib/utils";
 
 type Verdict = "pass" | "fail" | null | undefined;
@@ -42,8 +43,8 @@ function Chip({ verdict, label }: { verdict: Verdict; label: string }) {
     <span
       className={cn(
         "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium",
-        verdict === "pass" && "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
-        verdict === "fail" && "bg-rose-500/15 text-rose-700 dark:text-rose-300",
+        verdict === "pass" && "bg-emerald-500/15 text-emerald-900 dark:text-emerald-200",
+        verdict === "fail" && "bg-rose-500/15 text-rose-900 dark:text-rose-200",
         !verdict && "bg-muted text-muted-foreground",
       )}
       title={label}
@@ -54,17 +55,15 @@ function Chip({ verdict, label }: { verdict: Verdict; label: string }) {
 }
 
 function Highlight({ text, quote }: { text: string; quote?: string | null }) {
-  if (!quote) return <>{text}</>;
-  const idx = text.toLowerCase().indexOf(quote.toLowerCase().trim());
-  if (idx < 0) return <>{text}</>;
-  const end = idx + quote.trim().length;
+  const span = highlightSpan(text, quote);
+  if (!span) return <>{text}</>;
   return (
     <>
-      {text.slice(0, idx)}
+      {text.slice(0, span.start)}
       <mark className="rounded bg-amber-300/60 px-0.5 text-foreground dark:bg-amber-400/40">
-        {text.slice(idx, end)}
+        {text.slice(span.start, span.end)}
       </mark>
-      {text.slice(end)}
+      {text.slice(span.end)}
     </>
   );
 }
@@ -223,6 +222,7 @@ export default function SuiteRoute() {
   const prompts = useActionQuery("list-prompt-versions", { suiteId });
   const tab = searchParams.get("tab") === "prompt" ? "prompt" : "review";
   const [secondName, setSecondName] = useState("");
+  const lastReviewedId = useRef<string | null>(null);
 
   const cases = data?.cases ?? [];
   const visible = cases.filter((c) =>
@@ -267,14 +267,18 @@ export default function SuiteRoute() {
     },
     onSuccess: (result) => {
       setNote("");
-      toast.success(result.overrule ? "Overruled: saved as a regression test" : "Verdict approved");
+      lastReviewedId.current = result.id;
+      toast.success(reviewSavedMessage({ overrule: result.overrule, hadAgentVerdict: result.hadAgentVerdict }));
       const next = cases.find((c) => !c.humanVerdict && c.id !== result.id);
       if (next) setSearchParams({ case: next.id });
     },
   });
   const reopen = useActionMutation("reopen-case", {
     onError: (err) => toast.error(actionErrorMessage(err) ?? "Could not undo"),
-    onSuccess: () => toast.success("Verdict undone"),
+    onSuccess: (result) => {
+      if (lastReviewedId.current === result.id) lastReviewedId.current = null;
+      toast.success("Verdict undone");
+    },
   });
 
   const simulate = useActionMutation("run-simulated-reviewer", {
@@ -287,14 +291,20 @@ export default function SuiteRoute() {
   });
 
   // Keyboard review: P = pass, F = fail, J/K = next/previous case, U = undo.
-  const keyState = useRef({ visible, selected, note, busy: false });
-  keyState.current = { visible, selected, note, busy: review.isPending || reopen.isPending };
+  const keyState = useRef({ visible, selected, note, busy: false, lastReviewedId: null as string | null });
+  keyState.current = {
+    visible,
+    selected,
+    note,
+    busy: review.isPending || reopen.isPending,
+    lastReviewedId: lastReviewedId.current,
+  };
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (tab !== "review" || e.metaKey || e.ctrlKey || e.altKey) return;
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
-      const { visible: vis, selected: sel, note: n, busy } = keyState.current;
+      const { visible: vis, selected: sel, note: n, busy, lastReviewedId: savedId } = keyState.current;
       const key = e.key.toLowerCase();
       if (key === "j" || key === "k") {
         const i = vis.findIndex((c) => c.id === sel?.id);
@@ -304,8 +314,14 @@ export default function SuiteRoute() {
       } else if ((key === "p" || key === "f") && sel && !sel.humanVerdict && !busy) {
         review.mutate({ caseId: sel.id, verdict: key === "p" ? "pass" : "fail", note: n });
         e.preventDefault();
-      } else if (key === "u" && sel?.humanVerdict && !busy) {
-        reopen.mutate({ caseId: sel.id });
+      } else if (key === "u" && !busy) {
+        const target = undoTarget(
+          sel ? { id: sel.id, humanVerdict: sel.humanVerdict } : null,
+          savedId,
+        );
+        if (!target) return;
+        if (sel?.id !== target) setSearchParams({ case: target });
+        reopen.mutate({ caseId: target });
         e.preventDefault();
       }
     }
@@ -481,7 +497,7 @@ export default function SuiteRoute() {
                       <span className="text-xs tabular-nums text-muted-foreground">#{c.position}</span>
                       {c.title}
                       {c.isRegression ? (
-                        <span className="ml-auto rounded bg-amber-500/20 px-1 text-[10px] font-semibold text-amber-700 dark:text-amber-300">
+                        <span className="ml-auto rounded bg-amber-500/20 px-1 text-[10px] font-semibold text-amber-950 dark:text-amber-200">
                           REGRESSION
                         </span>
                       ) : null}
@@ -523,7 +539,7 @@ export default function SuiteRoute() {
               </div>
               <div className="grid gap-1">
                 <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                  Model answered {selected.agentEvidence ? "(agent's evidence highlighted)" : ""}
+                  Model answered {highlightSpan(selected.answer, selected.agentEvidence) ? "(agent's evidence highlighted)" : ""}
                 </div>
                 <p className="max-h-[420px] overflow-y-auto whitespace-pre-wrap rounded-lg border bg-card p-3 text-sm leading-relaxed">
                   <Highlight text={selected.answer} quote={selected.agentEvidence} />
@@ -564,9 +580,10 @@ export default function SuiteRoute() {
                 {selected.humanVerdict ? (
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="text-sm text-muted-foreground">
-                      {selected.isRegression
-                        ? "You overruled the agent. This case is now a regression test."
-                        : "You approved the agent's verdict."}
+                      {humanVerdictCopy({
+                        isRegression: selected.isRegression,
+                        agentVerdict: selected.agentVerdict,
+                      })}
                       {selected.humanNote ? ` Note: ${selected.humanNote}` : ""}
                     </p>
                     <Button

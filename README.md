@@ -24,8 +24,8 @@ EvalDesk is an [Agent-Native](https://www.agent-native.com) app, built on Builde
 - **Video:** the public Clips link is in the submission. The MP4 is in [releases](https://github.com/igoreduardoai/evaldesk/releases).
 - **Code:** this repo (MIT). To run it: `pnpm install && pnpm dev`, then **Load real public-data suite (ABCD, MIT)**.
 - **Proof (real runs, Nov 2, 2026):**
-  - The release gate blocked grader prompts v1, v2 and v3, and allowed v4 (3/3 regression tests).
-  - 13/13 unit tests pass, `typecheck` and Agent-Native `doctor` are clean, and 3 guardrails are enforced on the server.
+  - The release gate blocked grader prompts v1, v2 and v3, and allowed v4 (3/3 regression tests). That gate run called a model. It has not been repeated without an API key.
+  - The unit suite on that date was 13 tests. It is now 30, including the review-desk repairs, and `typecheck` and Agent-Native `doctor` are clean. Three guardrails are enforced on the server.
 
 Built for the [Agent-Native Hackathon](https://www.builder.io/hackathon) (Oct 27 – Nov 9, 2026).
 
@@ -59,8 +59,10 @@ Policy checks for LLM answers usually come in two forms:
   - The agent calls `record-verdict` once per case with PASS or FAIL, a reason, and an **exact quote**.
   - The server rejects quotes that are not in the answer (`evidence_not_found`).
 - **The human reviews from the keyboard.**
-  - **P** marks a pass, **F** a fail, **J**/**K** move to the next or previous case, and **U** undoes.
-  - The agent's quote is highlighted in the chat.
+  - **P** marks a pass, **F** a fail, and **J**/**K** move to the next or previous case.
+  - **U** undoes the open case when it has your verdict. If you just saved one and the desk moved on, **U** undoes that saved verdict.
+  - A verdict you save before the agent has graded is your verdict. The desk does not call it an approval of the agent.
+  - The agent's quote is highlighted when it actually occurs in the answer, including when the quote only differs by case or spacing.
   - When your verdict differs from the agent's, the case becomes a `REGRESSION` test, along with your note.
 - **A second reviewer, labeled honestly.**
   - **Run simulated reviewer** applies a deterministic checklist to the ABCD guideline: did the action log include Pull up Account, Validate Purchase, and Membership Privileges?
@@ -110,7 +112,7 @@ Reports: [`docs/gate/`](docs/gate). The model was `nvidia/Nemotron-3-Ultra-550b-
 
 ## Synthetic suite (earlier run)
 
-On the synthetic "Refund bot v3" suite (12 invented answers, 5 refund rules), the agent agreed with the human on 11/12 cases and the keyword baseline on 7/12, in one earlier run on the free OpenRouter model `nvidia/nemotron-3-ultra-550b-a55b:free`. That data is synthetic and labeled as such in the app.
+On the synthetic "Refund bot v3" suite (12 invented answers, 5 refund rules), the keyword baseline agrees with the human labels in `tests/grading.test.ts` on 8 of 12. One earlier live run on the free OpenRouter model `nvidia/nemotron-3-ultra-550b-a55b:free` agreed with the human on 11 of 12. That agent run was not repeated here, so 11/12 is a record of that run. The data is synthetic and labeled as such in the app.
 
 ## Guardrails (enforced on the server, not in the prompt)
 
@@ -150,7 +152,7 @@ Choose **Continue as local dev**, open **EvalDesk**, and click **Load real publi
 
 Release gate: `GATE_API_KEY=... [GATE_BASE_URL=...] node scripts/release-gate.mjs --tests tests/regressions/abcd-returns-regressions.jsonl --prompt prompts/grader-v4.txt`
 
-**Testing.** `pnpm test` runs 13 unit tests covering the evidence check, baseline, report, export, the simulated-reviewer checklist, Cohen's kappa, and the line diff. Also run `pnpm typecheck` and `pnpm agent-native:doctor`.
+**Testing.** `pnpm test` runs 30 unit tests covering the evidence check, baseline, report, export, the simulated-reviewer checklist, Cohen's kappa, the line diff, quote highlighting, verdict copy, the undo target, and the destructive-button color. Also run `pnpm typecheck` and `pnpm agent-native:doctor`.
 
 `pnpm-workspace.yaml` sets `node-pty: false` so installs work without build tools. This only disables the optional in-app terminal.
 
@@ -175,6 +177,7 @@ Release gate: `GATE_API_KEY=... [GATE_BASE_URL=...] node scripts/release-gate.mj
 - The human verdicts were entered by scripted clicks in the recording and chosen by the project author (see docs/DATA.md).
 - Free model tiers are rate-limited. The recorded run used Nemotron 3 Ultra on a paid OpenAI-compatible endpoint, and the agent needed three follow-up messages to finish grading.
 - The CI workflow needs a `GATE_API_KEY` repository secret before it can run.
+- **Ask agent to grade** opens the agent chat. It does not produce a grade until a model is connected. Connecting that model was not part of the local repair check, and a visible "Use Builder.io" button is not evidence that a Builder.io model ran.
 
 ## License
 
