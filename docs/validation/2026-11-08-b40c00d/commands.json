@@ -1,0 +1,26 @@
+{
+  "baseline": {
+    "sha": "b40c00dcde82d8ea87f26e23745c474e9c0c72e4",
+    "tag": "v0.2.0",
+    "branch_tested": "master",
+    "origin": "origin/master",
+    "subject": "Real public-data suite (ABCD, MIT), simulated second reviewer with Cohen's kappa, keyboard review, grader prompt versions with diff, release gate script and CI workflow",
+    "committed_at": "2026-11-02 17:37:50 -0600"
+  },
+  "commands": [
+    {"cmd": "pnpm test --reporter=verbose", "exit": 0, "summary": "1 file, 13 passed, 0 failed, vitest 4.1.12, duration 182ms"},
+    {"cmd": "pnpm typecheck", "exit": 0, "summary": "agent-native typecheck"},
+    {"cmd": "pnpm agent-native:doctor", "exit": 0, "summary": "15 guards, Clean — no findings"},
+    {"cmd": "pnpm build", "exit": 0, "summary": "Build complete. Log also printed production configuration errors for missing BETTER_AUTH_SECRET and DATABASE_URL. No secrets were set."},
+    {"cmd": "node scripts/release-gate.mjs", "exit": 2, "summary": "usage error, missing --tests and --prompt"},
+    {"cmd": "node scripts/release-gate.mjs --tests tests/regressions/abcd-returns-regressions.jsonl --prompt prompts/grader-v4.txt", "exit": 2, "summary": "Set GATE_API_KEY (or OPENROUTER_API_KEY). No key was present. No model was called."},
+    {"cmd": "local recompute of keyword baseline and abcdChecklist against docs/DATA.md labels", "exit": 0, "summary": "ABCD keyword 9/12. Simulated checklist agrees 6/12, kappa 0.08. Synthetic test labels 8/12 (66.7)."},
+    {"cmd": "browser journeys on http://127.0.0.1:5173 with pnpm exec agent-native dev --host 127.0.0.1 --port 5173 --strictPort", "exit": 0, "summary": "Local automatic dev sign-in. Synthetic and ABCD suites exercised. See REPORT.md."},
+    {"cmd": "Lighthouse accessibility+best-practices on http://127.0.0.1:5173/ unauthenticated welcome", "exit": 0, "summary": "accessibility 87, best-practices 96. One local run. Not the review desk."},
+    {"cmd": "Lighthouse against the authenticated ABCD desk", "exit": 134, "summary": "Node JavaScript heap out of memory before a score was produced."}
+  ],
+  "grave_truth_harness": {
+    "executed": false,
+    "reason": "https://github.com/igoreduardoai/grave-truth, pull/4, and pull/5 returned HTTP 404. git ls-remote and the GitHub API returned repository not found. This environment's GitHub app cannot resolve that repository. The public repo list for igoreduardoai has 13 repositories and does not include grave-truth. Commit 4a99c8e was not on this VM."
+  }
+}
